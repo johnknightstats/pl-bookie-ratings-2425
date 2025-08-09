@@ -19,6 +19,7 @@ This repo estimates **rolling strength ratings** for Premier League teams using 
 
 ## Repo Structure
 
+```
 pl-bookie-ratings-2425/
 ├── data/
 │ ├── E0_raw.csv
@@ -40,6 +41,7 @@ pl-bookie-ratings-2425/
 ├── requirements.txt
 ├── .gitignore
 └── LICENSE
+```
 
 ## Quickstart
 
