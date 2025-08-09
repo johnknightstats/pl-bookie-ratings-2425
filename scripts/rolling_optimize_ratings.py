@@ -19,29 +19,34 @@ df = pd.read_csv(DATA_PATH)
 df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
 df = df.sort_values('Date').reset_index(drop=True)
 
-# === Prep ===
+# === Identify all teams and assign match indexes ===
 teams = sorted(set(df['HomeTeam']).union(df['AwayTeam']))
 team_matches = defaultdict(list)
 
-# Create per-team chronological match index
+# Track which matches each team played in
 for idx, row in df.iterrows():
     team_matches[row['HomeTeam']].append(idx)
     team_matches[row['AwayTeam']].append(idx)
 
-# Only start once every team has played at least one game
+# Wait until all teams have played at least one match
 min_start_date = max(df.loc[team_matches[t][0], 'Date'] for t in teams)
+
+# List of all match dates after that point
 match_dates = sorted(df[df['Date'] >= min_start_date]['Date'].unique())
 
-# Estimate global home advantage once
-global_home_adv = df['Handicap_Pred'].mean()
+# === Exclude final match date from rating calculation ===
+match_dates = match_dates[:-1]
 
-# === Rolling optimization ===
+# === Estimate global home advantage ===
+global_home_adv = df['Handicap_Pred'].mean()
+print(f"Global home advantage: {global_home_adv:.4f}")
+
+# === Rolling rating calculation ===
 all_ratings = []
 
 for current_date in match_dates:
     current_matches = df[df['Date'] == current_date]
     teams_today = set(current_matches['HomeTeam']).union(current_matches['AwayTeam'])
-
     used_match_idxs = set()
 
     for team in teams:
@@ -50,6 +55,7 @@ for current_date in match_dates:
         idx_today = np.where(match_dates_team == current_date)[0]
 
         if len(idx_today) == 1:
+            # Team is playing today → include this match plus ±1
             idx = idx_today[0]
             if idx > 0:
                 used_match_idxs.add(match_ids[idx - 1])
@@ -57,22 +63,19 @@ for current_date in match_dates:
             if idx < len(match_ids) - 1:
                 used_match_idxs.add(match_ids[idx + 1])
         else:
-            # Re-index match_dates_team to match match_ids exactly
+            # Team is not playing → include prev and next matches
             match_dates_team = pd.Series(match_dates_team.values, index=range(len(match_ids)))
-
             future = match_dates_team[match_dates_team > current_date]
             past = match_dates_team[match_dates_team < current_date]
 
-            if len(future) > 0 and len(past) > 0:
-                next_pos = future.index[0]
-                prev_pos = past.index[-1]
-                used_match_idxs.update([match_ids[prev_pos], match_ids[next_pos]])
-
-
-
+            if len(past) > 0:
+                used_match_idxs.add(match_ids[past.index[-1]])
+            if len(future) > 0:
+                used_match_idxs.add(match_ids[future.index[0]])
 
     window_df = df.loc[list(used_match_idxs)].copy()
 
+    # === Optimization step ===
     team_idx = {team: i for i, team in enumerate(teams)}
     n_teams = len(teams)
 
@@ -90,8 +93,8 @@ for current_date in match_dates:
     result = minimize(loss, x0, method="L-BFGS-B")
 
     if result.success:
-        ratings = -result.x  # flip so positive = strong
-        ratings -= ratings.mean()  # center
+        ratings = -result.x  # Flip: positive = stronger
+        ratings -= ratings.mean()  # Center around 0
         for team in teams:
             all_ratings.append({
                 'Date': current_date,
@@ -99,12 +102,12 @@ for current_date in match_dates:
                 'Rating': ratings[team_idx[team]]
             })
     else:
-        print(f"❌ Optimization failed on {current_date.date()}: {result.message}")
+        print(f"Optimization failed on {current_date.date()}: {result.message}")
 
-# === Create final dataframe ===
+# === Create final ratings dataframe ===
 ratings_df = pd.DataFrame(all_ratings)
 
-# Add logo paths
+# Add path to logo file (sanitized)
 def make_logo_path(team):
     sanitized = team.replace(" ", "_").replace("'", "")
     return LOGO_PATH_TEMPLATE.format(team=sanitized)
@@ -113,6 +116,7 @@ ratings_df['LogoPath'] = ratings_df['Team'].apply(make_logo_path)
 
 # Save
 ratings_df.to_csv(OUTPUT_PATH, index=False)
-print(f"✅ Rolling team ratings saved to {OUTPUT_PATH}")
+print(f"Rolling team ratings saved to {OUTPUT_PATH}")
+
 
 

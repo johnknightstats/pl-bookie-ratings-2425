@@ -9,4 +9,4 @@ OUTPUT_PATH = "../data/E0_raw.csv"
 
 df = pd.read_csv(URL)
 df.to_csv(OUTPUT_PATH, index=False)
-print(f"Downloaded and saved to {OUTPUT_PATH}")
+print(f"PL 24-25 data downloaded and saved to {OUTPUT_PATH}")

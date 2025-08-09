@@ -5,24 +5,29 @@
 import pandas as pd
 import statsmodels.api as sm
 
-# Load data
+# === Load data ===
 df = pd.read_csv("../data/E0_clean.csv")
 
-# Regression: GoalDiff ~ PCAHH only
+# Keep necessary columns
+df = df[['Date', 'HomeTeam', 'AwayTeam', 'GoalDiff', 'AHh', 'PCAHH']].dropna()
+
+# How much above or below the handicap line did the home team win?
+df['Residual'] = df['GoalDiff'] - df['AHh']
+
+# Regress residual on the home odds at the handicap line
 X = df[['PCAHH']]
 X = sm.add_constant(X)
-y = df['GoalDiff']
+y = df['Residual']
 
 model = sm.OLS(y, X).fit()
 print(model.summary())
 
-# Adjustment learned from PCAHH
+# Use the model to predict the adjustment based on odds
 df['Adjustment'] = model.predict(X)
 
 # Final estimated team difference: original line + adjustment
 df['Handicap_Pred'] = df['AHh'] + df['Adjustment']
 
-# Save to file
+# Save with necessary columns
 df.to_csv("../data/E0_with_handicap.csv", index=False)
-print("✅ Regression complete and saved to ../data/E0_with_handicap.csv")
-
+print("Regression complete and saved to ../data/E0_with_handicap.csv")
